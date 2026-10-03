@@ -1,0 +1,419 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────
+// ENUMS
+// ─────────────────────────────────────────
+
+enum UserRole {
+  client
+  owner
+  admin
+}
+
+enum UserStatus {
+  pending_review
+  active
+  suspended
+  rejected
+}
+
+enum IdType {
+  national_id
+  passport
+}
+
+enum PropertyType {
+  apartment
+  chalet
+  villa
+  studio
+}
+
+enum CancellationPolicy {
+  flexible
+  moderate
+  strict
+}
+
+enum PropertyStatus {
+  draft
+  pending_review
+  published
+  suspended
+  rejected
+}
+
+enum AvailabilityStatus {
+  available
+  booked
+  blocked_by_owner
+  under_maintenance
+}
+
+enum BookingStatus {
+  pending_payment
+  pending_owner_approval
+  confirmed
+  rejected_by_owner
+  cancelled_by_client
+  completed
+  disputed
+}
+
+enum PaymentMethod {
+  visa_mastercard
+  instapay
+  vodafone_cash
+  fawry
+}
+
+enum PaymentType {
+  deposit
+  remaining
+  refund
+  platform_commission
+}
+
+enum PaymentStatus {
+  pending
+  completed
+  failed
+  refunded
+}
+
+enum PayoutMethod {
+  bank_account
+  instapay
+  vodafone_cash
+}
+
+enum PayoutStatus {
+  pending
+  approved
+  paid
+  rejected
+}
+
+enum ReviewStatus {
+  published
+  hidden
+  flagged
+}
+
+enum DisputeDecision {
+  full_refund
+  partial_refund
+  rejected
+}
+
+enum DisputePriority {
+  low
+  medium
+  high
+}
+
+enum DisputeStatus {
+  under_review
+  resolved
+  escalated
+}
+
+enum TicketCategory {
+  technical
+  financial
+  booking
+  other
+}
+
+enum TicketPriority {
+  low
+  normal
+  high
+  urgent
+}
+
+enum TicketStatus {
+  open
+  in_progress
+  closed
+}
+
+enum NotificationChannel {
+  push
+  email
+  sms
+}
+
+enum NotificationTarget {
+  all
+  clients
+  owners
+  specific_user
+}
+
+// ─────────────────────────────────────────
+// MODELS
+// ─────────────────────────────────────────
+
+model User {
+  id                String     @id @default(uuid())
+  role              UserRole
+  firstName         String     @map("first_name")
+  lastName          String     @map("last_name")
+  email             String     @unique
+  phone             String     @unique
+  passwordHash      String     @map("password_hash")
+  nationalIdType    IdType?    @map("national_id_type")
+  nationalIdNumber  String?    @map("national_id_number")
+  bankAccountInfo   Json?      @map("bank_account_info")
+  status            UserStatus @default(pending_review)
+  avgRating         Decimal?   @map("avg_rating") @db.Decimal(3, 2)
+  createdAt         DateTime   @default(now()) @map("created_at")
+  updatedAt         DateTime   @updatedAt @map("updated_at")
+
+  properties        Property[]       @relation("OwnerProperties")
+  bookings          Booking[]        @relation("ClientBookings")
+  reviews           Review[]         @relation("ClientReviews")
+  supportTickets    SupportTicket[]
+  ticketMessages    TicketMessage[]
+  disputesRaised    Dispute[]        @relation("DisputeRaisedBy")
+  payoutRequests    PayoutRequest[]
+  notificationsReceived Notification[] @relation("NotificationTargetUser")
+
+  @@map("users")
+}
+
+model Property {
+  id                 String             @id @default(uuid())
+  ownerId            String             @map("owner_id")
+  title              String
+  description        String
+  type               PropertyType
+  region             String
+  address            String
+  floor              Int?
+  areaSqm            Int                @map("area_sqm")
+  rooms              Int
+  bathrooms          Int
+  maxGuests          Int                @map("max_guests")
+  hasSeaView         Boolean            @map("has_sea_view")
+  basePriceNight     Decimal            @map("base_price_night") @db.Decimal(10, 2)
+  weeklyPrice        Decimal?           @map("weekly_price") @db.Decimal(10, 2)
+  summerPriceNight   Decimal?           @map("summer_price_night") @db.Decimal(10, 2)
+  depositPercentage  Decimal            @default(10) @map("deposit_percentage") @db.Decimal(5, 2)
+  minNights          Int                @default(1) @map("min_nights")
+  cancellationPolicy CancellationPolicy @map("cancellation_policy")
+  checkinTime        DateTime           @map("checkin_time") @db.Time()
+  checkoutTime       DateTime           @map("checkout_time") @db.Time()
+  status             PropertyStatus     @default(draft)
+  avgRating          Decimal?           @map("avg_rating") @db.Decimal(3, 2)
+  createdAt          DateTime           @default(now()) @map("created_at")
+  updatedAt          DateTime           @updatedAt @map("updated_at")
+
+  owner              User                 @relation("OwnerProperties", fields: [ownerId], references: [id])
+  images             PropertyImage[]
+  amenities          PropertyAmenity[]
+  availabilityBlocks AvailabilityBlock[]
+  bookings           Booking[]
+  reviews            Review[]
+
+  @@index([region])
+  @@index([status])
+  @@map("properties")
+}
+
+model PropertyImage {
+  id         String   @id @default(uuid())
+  propertyId String   @map("property_id")
+  url        String
+  isCover    Boolean  @default(false) @map("is_cover")
+  sortOrder  Int      @default(0) @map("sort_order")
+
+  property   Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  @@map("property_images")
+}
+
+model Amenity {
+  id         String             @id @default(uuid())
+  name       String
+  icon       String
+
+  properties PropertyAmenity[]
+
+  @@map("amenities")
+}
+
+model PropertyAmenity {
+  propertyId String  @map("property_id")
+  amenityId  String  @map("amenity_id")
+
+  property   Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  amenity    Amenity  @relation(fields: [amenityId], references: [id], onDelete: Cascade)
+
+  @@id([propertyId, amenityId])
+  @@map("property_amenities")
+}
+
+/// NOTE: beyond this Prisma model, a Postgres EXCLUDE constraint on a
+/// daterange(start_date, end_date) column must be added via raw SQL in a
+/// migration to guarantee no overlapping bookings at the database level.
+model AvailabilityBlock {
+  id         String              @id @default(uuid())
+  propertyId String              @map("property_id")
+  startDate  DateTime            @map("start_date") @db.Date
+  endDate    DateTime            @map("end_date") @db.Date
+  status     AvailabilityStatus  @default(available)
+  bookingId  String?             @unique @map("booking_id")
+
+  property   Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  booking    Booking? @relation(fields: [bookingId], references: [id])
+
+  @@index([propertyId, startDate, endDate])
+  @@map("availability_blocks")
+}
+
+model Booking {
+  id                     String        @id @default(uuid())
+  propertyId             String        @map("property_id")
+  clientId               String        @map("client_id")
+  checkIn                DateTime      @map("check_in") @db.Date
+  checkOut               DateTime      @map("check_out") @db.Date
+  guestsCount             Int          @map("guests_count")
+  totalPrice             Decimal       @map("total_price") @db.Decimal(10, 2)
+  depositAmount          Decimal       @map("deposit_amount") @db.Decimal(10, 2)
+  serviceFee             Decimal       @map("service_fee") @db.Decimal(10, 2)
+  status                 BookingStatus @default(pending_payment)
+  ownerResponseDeadline  DateTime?     @map("owner_response_deadline")
+  createdAt              DateTime      @default(now()) @map("created_at")
+  updatedAt              DateTime      @updatedAt @map("updated_at")
+
+  property               Property           @relation(fields: [propertyId], references: [id])
+  client                 User               @relation("ClientBookings", fields: [clientId], references: [id])
+  availabilityBlock      AvailabilityBlock?
+  payments                Payment[]
+  review                 Review?
+  dispute                Dispute?
+
+  @@index([propertyId])
+  @@index([clientId])
+  @@index([status])
+  @@map("bookings")
+}
+
+model Payment {
+  id                String        @id @default(uuid())
+  bookingId         String        @map("booking_id")
+  amount            Decimal       @db.Decimal(10, 2)
+  method            PaymentMethod
+  gatewayReference  String?       @map("gateway_reference")
+  type              PaymentType
+  status            PaymentStatus @default(pending)
+  createdAt         DateTime      @default(now()) @map("created_at")
+
+  booking           Booking @relation(fields: [bookingId], references: [id])
+
+  @@map("payments")
+}
+
+model PayoutRequest {
+  id           String       @id @default(uuid())
+  ownerId      String       @map("owner_id")
+  amount       Decimal      @db.Decimal(10, 2)
+  method       PayoutMethod
+  status       PayoutStatus @default(pending)
+  requestedAt  DateTime     @default(now()) @map("requested_at")
+  resolvedAt   DateTime?    @map("resolved_at")
+
+  owner        User @relation(fields: [ownerId], references: [id])
+
+  @@map("payout_requests")
+}
+
+model Review {
+  id          String       @id @default(uuid())
+  bookingId   String       @unique @map("booking_id")
+  propertyId  String       @map("property_id")
+  clientId    String       @map("client_id")
+  rating      Int
+  comment     String
+  ownerReply  String?      @map("owner_reply")
+  status      ReviewStatus @default(published)
+  createdAt   DateTime     @default(now()) @map("created_at")
+
+  booking     Booking  @relation(fields: [bookingId], references: [id])
+  property    Property @relation(fields: [propertyId], references: [id])
+  client      User     @relation("ClientReviews", fields: [clientId], references: [id])
+
+  @@map("reviews")
+}
+
+model Dispute {
+  id              String           @id @default(uuid())
+  bookingId       String           @unique @map("booking_id")
+  raisedBy        String           @map("raised_by")
+  reason          String
+  evidenceUrls    Json             @map("evidence_urls")
+  ownerResponse   String?          @map("owner_response")
+  adminDecision   DisputeDecision? @map("admin_decision")
+  priority        DisputePriority  @default(low)
+  status          DisputeStatus    @default(under_review)
+  createdAt       DateTime         @default(now()) @map("created_at")
+  resolvedAt      DateTime?        @map("resolved_at")
+
+  booking         Booking @relation(fields: [bookingId], references: [id])
+  raisedByUser    User    @relation("DisputeRaisedBy", fields: [raisedBy], references: [id])
+
+  @@map("disputes")
+}
+
+model SupportTicket {
+  id        String          @id @default(uuid())
+  userId    String          @map("user_id")
+  category  TicketCategory
+  subject   String
+  priority  TicketPriority  @default(normal)
+  status    TicketStatus    @default(open)
+  createdAt DateTime        @default(now()) @map("created_at")
+
+  user      User            @relation(fields: [userId], references: [id])
+  messages  TicketMessage[]
+
+  @@map("support_tickets")
+}
+
+model TicketMessage {
+  id        String   @id @default(uuid())
+  ticketId  String   @map("ticket_id")
+  senderId  String   @map("sender_id")
+  message   String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  ticket    SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  sender    User          @relation(fields: [senderId], references: [id])
+
+  @@map("ticket_messages")
+}
+
+model Notification {
+  id            String              @id @default(uuid())
+  title         String
+  body          String
+  channel       NotificationChannel
+  target        NotificationTarget
+  targetUserId  String?             @map("target_user_id")
+  sentCount     Int                 @default(0) @map("sent_count")
+  openRate      Decimal?            @map("open_rate") @db.Decimal(5, 2)
+  createdAt     DateTime            @default(now()) @map("created_at")
+
+  targetUser    User? @relation("NotificationTargetUser", fields: [targetUserId], references: [id])
+
+  @@map("notifications")
+}

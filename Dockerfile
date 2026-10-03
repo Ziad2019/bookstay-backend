@@ -1,14 +1,18 @@
-FROM node:24-alpine
-
+# ---- build stage ----
+FROM node:24-alpine AS build
 WORKDIR /app
-
 COPY package*.json ./
-RUN npm install
-
+RUN npm ci
 COPY . .
-
 RUN npm run build
 
+# ---- production stage ----
+FROM node:24-alpine AS prod
+WORKDIR /app
+ENV NODE_ENV=production
+COPY package*.json ./
+RUN npm ci --omit=dev && npm cache clean --force
+COPY --from=build /app/dist ./dist
+USER node
 EXPOSE 5001
-
-CMD ["npm", "run", "start:prod"]
+CMD ["node", "dist/main.js"]
