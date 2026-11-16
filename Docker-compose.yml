@@ -1,7 +1,4 @@
-# DEV: by default starts ONLY Postgres. Run the backend locally with `npm run start:dev`.
-#   docker compose up -d                      -> postgres only
-#   docker compose --profile app up -d --build -> postgres + backend container
-name: bookstay   # keeps the same volume name (bookstay_pgdata) as before
+name: bookstay
 
 services:
   postgres:
@@ -11,12 +8,26 @@ services:
       POSTGRES_USER: bookstay
       POSTGRES_PASSWORD: bookstay_dev_pass
       POSTGRES_DB: bookstay_db
+      TZ: UTC
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U bookstay -d bookstay_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -35,11 +46,16 @@ services:
       DB_USERNAME: bookstay
       DB_PASSWORD: bookstay_dev_pass
       DB_NAME: bookstay_db
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
     env_file:
       - .env
     depends_on:
       postgres:
         condition: service_healthy
+      redis:
+        condition: service_healthy
 
 volumes:
   pgdata:
+  redisdata:
